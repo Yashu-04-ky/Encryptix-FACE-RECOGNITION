@@ -1,0 +1,70 @@
+import cv2
+import numpy as np
+import face_recognition
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+def detect_faces_haar(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    return faces
+def detect_faces_dnn(image):
+    net = cv2.dnn.readNetFromCaffe('deploy.prototxt', 'weights.caffemodel')
+    (h, w) = image.shape[:2]
+    blob = cv2.dnn.blobFromImage(cv2.resize(image, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0))
+    net.setInput(blob)
+    detections = net.forward()
+    faces = []
+    for i in range(0, detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
+        if confidence > 0.5:
+            box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+            (startX, startY, endX, endY) = box.astype("int")
+            faces.append((startX, startY, endX, endY))
+    return faces
+def recognize_faces(image):
+    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    face_locations = face_recognition.face_locations(rgb_image)
+    face_encodings = face_recognition.face_encodings(rgb_image, face_locations)
+    return face_locations, face_encodings
+def process_image(image_path, use_dnn=False):
+    image = cv2.imread(image_path)
+    if use_dnn:
+        faces = detect_faces_dnn(image)
+    else:
+        faces = detect_faces_haar(image)
+    
+    face_locations, face_encodings = recognize_faces(image)
+    
+    for (startX, startY, endX, endY), encoding in zip(faces, face_encodings):
+        cv2.rectangle(image, (startX, startY), (endX, endY), (0, 255, 0), 2)
+    
+    cv2.imshow("Image", image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+def process_video(video_path, use_dnn=False):
+    cap = cv2.VideoCapture(video_path)
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        if use_dnn:
+            faces = detect_faces_dnn(frame)
+        else:
+            faces = detect_faces_haar(frame)
+        
+        face_locations, face_encodings = recognize_faces(frame)
+        
+        for (startX, startY, endX, endY), encoding in zip(faces, face_encodings):
+            cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
+        
+        cv2.imshow("Video", frame)
+        
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    
+    cap.release()
+    cv2.destroyAllWindows()
+if __name__ == "__main__":
+    process_image('example.jpg', use_dnn=True)  # Set use_dnn=True to use deep learning-based detector
+    process_video('example.mp4', use_dnn=True)
